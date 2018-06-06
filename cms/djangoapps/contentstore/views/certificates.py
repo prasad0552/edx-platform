@@ -158,6 +158,15 @@ class CertificateManager(object):
             raise CertificateValidationError(_("must have name of the certificate"))
 
     @staticmethod
+    def is_activated(course):
+        if settings.FEATURES.get('CERTIFICATES_HTML_VIEW', False):
+            certificates = CertificateManager.get_certificates(course)
+            # we are assuming only one certificate in certificates collection.
+            for certificate in certificates:
+                return certificate.get('is_active', False)
+        return False
+
+    @staticmethod
     def get_used_ids(course):
         """
         Return a list of certificate identifiers that are already in use for this course
@@ -393,13 +402,7 @@ def certificates_list_handler(request, course_key_string):
             else:
                 certificate_web_view_url = None
             certificates = None
-            is_active = False
-            if settings.FEATURES.get('CERTIFICATES_HTML_VIEW', False):
-                certificates = CertificateManager.get_certificates(course)
-                # we are assuming only one certificate in certificates collection.
-                for certificate in certificates:
-                    is_active = certificate.get('is_active', False)
-                    break
+            is_active = CertificateManager.is_activated(course)
 
             return render_to_response('certificates.html', {
                 'context_course': course,

@@ -5,6 +5,7 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
 
 from contentstore.course_info_model import get_course_updates
+from contentstore.views.certificates import CertificateManager
 from opaque_keys.edx.keys import CourseKey
 from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin, view_auth_classes
 from student.auth import has_course_author_access
@@ -41,12 +42,17 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
             * has_start_date
             * has_end_date
         * assignments
-            * dates_within_range
+            * total_number
+            * num_with_dates
+            * num_with_dates_after_start
+            * num_with_dates_before_end
         * grades
             * sum_of_weights
         * certificates
+            * is_activated
+            * has_certificate
         * updates
-            * has_update: True
+            * has_update
 
     **Example GET Response**
 
@@ -62,7 +68,6 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
         """
         Returns validation information for the given course.
         """
-        log.info("In the GET method")
         default_request_value = request.query_params.get('all', False)
 
         course_key = CourseKey.from_string(course_id)
@@ -81,15 +86,15 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
             )
         if request.query_params.get('assignments', default_request_value):
             response.update(
-                assignment_dates=self._assignments_validation(course)
+                assignments=self._assignments_validation(course)
             )
         if request.query_params.get('grades', default_request_value):
             response.update(
-                self._grades_validation(course)
+                grades=self._grades_validation(course)
             )
         if request.query_params.get('certificates', default_request_value):
             response.update(
-                self._certificates_validation(course)
+                certificates=self._certificates_validation(course)
             )
         if request.query_params.get('updates', default_request_value):
             response.update(
@@ -106,13 +111,30 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
 
     def _dates_validation(self, course):
         return dict(
-            has_start_date=not course.start_date_is_still_default,
-            has_end_date=course.end is not None
+            has_start_date=self._has_start_date(course),
+            has_end_date=course.end is not None,
         )
 
     def _assignments_validation(self, course):
         assignments = self._get_assignments(course)
+        assignments_with_dates = filter(lambda a: a.due, assignments)
+        num_with_dates = len(assignments_with_dates)
+        num_with_dates_after_start = (
+            len(filter(lambda a: a.due > course.start, assignments_with_dates))
+            if self._has_start_date(course)
+            else 0
+        )
+        num_with_dates_before_end = (
+            len(filter(lambda a: a.due < course.end, assignments_with_dates))
+            if course.end
+            else 0
+        )
+
         return dict(
+            total_number=len(assignments),
+            num_with_dates=num_with_dates,
+            num_with_dates_after_start=num_with_dates_after_start,
+            num_with_dates_before_end=num_with_dates_before_end,
         )
 
     def _grades_validation(self, course):
@@ -123,6 +145,8 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
 
     def _certificates_validation(self, course):
         return dict(
+            is_activated=CertificateManager.is_activated(course),
+            has_certificate=len(CertificateManager.get_certificates(course)) > 0,
         )
 
     def _updates_validation(self, course, request):
@@ -134,3 +158,6 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
 
     def _get_assignments(self, course):
         return modulestore().get_items(course.id, qualifiers={'category': 'sequential'})
+
+    def _has_start_date(self, course):
+        return not course.start_date_is_still_default
