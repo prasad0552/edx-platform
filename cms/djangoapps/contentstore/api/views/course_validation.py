@@ -1,4 +1,3 @@
-""" API v0 views. """
 import logging
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
@@ -78,31 +77,34 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
                 developer_message='The user requested does not have the required permissions.',
                 error_code='user_mismatch'
             )
-        course = modulestore().get_course(course_key, depth=self._required_course_depth(request, default_request_value))
 
-        response = dict(
-            is_self_paced=course.self_paced,
-        )
-        if request.query_params.get('dates', default_request_value):
-            response.update(
-                dates=self._dates_validation(course)
+        store = modulestore()
+        with store.bulk_operations(course_key):
+            course = store.get_course(course_key, depth=self._required_course_depth(request, default_request_value))
+
+            response = dict(
+                is_self_paced=course.self_paced,
             )
-        if request.query_params.get('assignments', default_request_value):
-            response.update(
-                assignments=self._assignments_validation(course)
-            )
-        if request.query_params.get('grades', default_request_value):
-            response.update(
-                grades=self._grades_validation(course)
-            )
-        if request.query_params.get('certificates', default_request_value):
-            response.update(
-                certificates=self._certificates_validation(course)
-            )
-        if request.query_params.get('updates', default_request_value):
-            response.update(
-                updates=self._updates_validation(course, request)
-            )
+            if request.query_params.get('dates', default_request_value):
+                response.update(
+                    dates=self._dates_validation(course)
+                )
+            if request.query_params.get('assignments', default_request_value):
+                response.update(
+                    assignments=self._assignments_validation(course)
+                )
+            if request.query_params.get('grades', default_request_value):
+                response.update(
+                    grades=self._grades_validation(course)
+                )
+            if request.query_params.get('certificates', default_request_value):
+                response.update(
+                    certificates=self._certificates_validation(course)
+                )
+            if request.query_params.get('updates', default_request_value):
+                response.update(
+                    updates=self._updates_validation(course, request)
+                )
 
         return Response(response)
 
@@ -120,7 +122,9 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
 
     def _assignments_validation(self, course):
         assignments = self._get_assignments(course)
-        assignments_with_dates = filter(lambda a: a.due, assignments)
+        # TODO exclude sections with hide_from_toc
+        visible_assignments = filter(lambda a: not a.visible_to_staff_only, assignments)
+        assignments_with_dates = filter(lambda a: a.due, visible_assignments)
         num_with_dates = len(assignments_with_dates)
         num_with_dates_after_start = (
             len(filter(lambda a: a.due > course.start, assignments_with_dates))
@@ -135,6 +139,7 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
 
         return dict(
             total_number=len(assignments),
+            total_visible=len(visible_assignments),
             num_with_dates=num_with_dates,
             num_with_dates_after_start=num_with_dates_after_start,
             num_with_dates_before_end=num_with_dates_before_end,

@@ -1,4 +1,3 @@
-""" API v0 views. """
 import base64
 import logging
 import os
