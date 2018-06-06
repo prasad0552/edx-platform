@@ -38,6 +38,7 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
 
         The HTTP 200 response has the following values.
 
+        * is_self_paced
         * dates
             * has_start_date
             * has_end_date
@@ -79,7 +80,9 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
             )
         course = modulestore().get_course(course_key, depth=self._required_course_depth(request, default_request_value))
 
-        response = {}
+        response = dict(
+            is_self_paced=course.self_paced,
+        )
         if request.query_params.get('dates', default_request_value):
             response.update(
                 dates=self._dates_validation(course)
