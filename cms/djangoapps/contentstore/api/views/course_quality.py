@@ -64,15 +64,15 @@ class CourseQualityView(DeveloperErrorViewMixin, GenericAPIView):
             )
             if request.query_params.get('sections', default_request_value):
                 response.update(
-                    highlights=self._sections_quality(course)
+                    sections=self._sections_quality(course)
                 )
             if request.query_params.get('subsections', default_request_value):
                 response.update(
-                    structure=self._subsections_quality(course)
+                    subsections=self._subsections_quality(course)
                 )
             if request.query_params.get('units', default_request_value):
                 response.update(
-                    structure=self._units_quality(course)
+                    units=self._units_quality(course)
                 )
             if request.query_params.get('videos', default_request_value):
                 response.update(
