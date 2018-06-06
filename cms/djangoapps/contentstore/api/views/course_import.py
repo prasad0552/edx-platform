@@ -1,4 +1,6 @@
-""" API v0 views. """
+"""
+APIs related to Course Import.
+"""
 import base64
 import logging
 import os
@@ -125,7 +127,6 @@ class CourseImportView(CourseImportExportViewMixin, GenericAPIView):
                     status_code=status.HTTP_400_BAD_REQUEST,
                     developer_message='Missing required parameter',
                     error_code='internal_error',
-                    field_errors={'course_data': '"course_data" parameter is required, and must be a .tar.gz file'}
                 )
 
             filename = request.FILES['course_data'].name
@@ -134,11 +135,10 @@ class CourseImportView(CourseImportExportViewMixin, GenericAPIView):
                     status_code=status.HTTP_400_BAD_REQUEST,
                     developer_message='Parameter in the wrong format',
                     error_code='internal_error',
-                    field_errors={'course_data': '"course_data" parameter is required, and must be a .tar.gz file'}
                 )
             course_dir = path(settings.GITHUB_REPO_ROOT) / base64.urlsafe_b64encode(repr(courselike_key))
             temp_filepath = course_dir / filename
-            if not course_dir.isdir():  # pylint: disable=no-value-for-parameter
+            if not course_dir.isdir():
                 os.mkdir(course_dir)
 
             log.debug('importing course to {0}'.format(temp_filepath))
@@ -156,7 +156,7 @@ class CourseImportView(CourseImportExportViewMixin, GenericAPIView):
             return Response({
                 'task_id': async_result.task_id
             })
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             return self.make_error_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 developer_message=str(e),
@@ -184,7 +184,7 @@ class CourseImportView(CourseImportExportViewMixin, GenericAPIView):
             return Response({
                 'state': task_status.state
             })
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             return self.make_error_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 developer_message=str(e),
