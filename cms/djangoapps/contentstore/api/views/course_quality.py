@@ -34,40 +34,45 @@ class CourseQualityView(DeveloperErrorViewMixin, GenericAPIView):
         * subsections
         * units
         * videos
+        * graded_only (boolean) - whether to return subsections and units information for only graded subsections.
 
     **GET Response Values**
 
         The HTTP 200 response has the following values.
 
-        * is_self_paced
+        * is_self_paced - whether the course is self-paced.
         * sections
-            * total_number
-            * total_visible
-            * number_with_highlights
-            * highlights_enabled
+            * total_number - number of sections in the course.
+            * total_visible - number of sections visible to learners in the course.
+            * number_with_highlights - number of sections that have at least one highlight entered.
+            * highlights_enabled - whether highlights are enabled in the course.
         * subsections
-            * total_number
-            * num_with_one_block_type
-            * num_block_types
+            * total_visible - number of subsections visible to learners in the course.
+            * num_with_one_block_type - number of visible subsections containing only one type of block.
+            * num_block_types - statistics for number of block types across all visible subsections.
                 * min
                 * max
                 * mean
                 * median
                 * mode
         * units
-            * total_number
-            * num_blocks
+            * total_visible - number of units visible to learners in the course.
+            * num_blocks - statistics for number of block across all visible units.
                 * min
                 * max
                 * mean
                 * median
                 * mode
         * videos
-
-    **Example GET Response**
-
-        {
-        }
+            * total_number - number of video blocks in the course.
+            * num_with_val_id - number of video blocks that include video pipeline IDs.
+            * num_mobile_encoded - number of videos encoded through the video pipeline.
+            * durations - statistics for video duration across all videos encoded through the video pipeline.
+                * min
+                * max
+                * mean
+                * median
+                * mode
 
     """
     def get(self, request, course_id):
@@ -96,11 +101,11 @@ class CourseQualityView(DeveloperErrorViewMixin, GenericAPIView):
                 )
             if request.query_params.get('subsections', default_request_value):
                 response.update(
-                    subsections=self._subsections_quality(course)
+                    subsections=self._subsections_quality(course, request)
                 )
             if request.query_params.get('units', default_request_value):
                 response.update(
-                    units=self._units_quality(course)
+                    units=self._units_quality(course, request)
                 )
             if request.query_params.get('videos', default_request_value):
                 response.update(
@@ -129,33 +134,32 @@ class CourseQualityView(DeveloperErrorViewMixin, GenericAPIView):
             highlights_enabled=course.highlights_enabled_for_messaging,
         )
 
-    def _subsections_quality(self, course):
-        subsection_unit_dict = self._get_subsections_and_units(course)
-        subsection_num_block_types_dict = {}
+    def _subsections_quality(self, course, request):
+        subsection_unit_dict = self._get_subsections_and_units(course, request)
+        num_block_types_per_subsection_dict = {}
         for subsection_key, unit_dict in subsection_unit_dict.iteritems():
-            all_block_types = (
+            leaf_block_types_in_subsection = (
                 unit_info['leaf_block_types']
                 for unit_info in unit_dict.itervalues()
-                if unit_info['num_leaf_blocks'] > 1
             )
-            subsection_num_block_types_dict[subsection_key] = len(set().union(*all_block_types))
+            num_block_types_per_subsection_dict[subsection_key] = len(set().union(*leaf_block_types_in_subsection))
 
         return dict(
-            total_number=len(subsection_num_block_types_dict),
-            num_with_one_block_type=len(filter(lambda s: s == 1, subsection_num_block_types_dict.itervalues())),
-            num_block_types=self._stats_dict(list(subsection_num_block_types_dict.itervalues())),
+            total_visible=len(num_block_types_per_subsection_dict),
+            num_with_one_block_type=len(filter(lambda s: s == 1, num_block_types_per_subsection_dict.itervalues())),
+            num_block_types=self._stats_dict(list(num_block_types_per_subsection_dict.itervalues())),
         )
 
-    def _units_quality(self, course):
-        subsection_unit_dict = self._get_subsections_and_units(course)
-        num_leaf_blocks_list = [
+    def _units_quality(self, course, request):
+        subsection_unit_dict = self._get_subsections_and_units(course, request)
+        num_leaf_blocks_per_unit = [
             unit_info['num_leaf_blocks']
             for unit_dict in subsection_unit_dict.itervalues()
             for unit_info in unit_dict.itervalues()
         ]
         return dict(
-            total_number=len(num_leaf_blocks_list),
-            num_blocks=self._stats_dict(num_leaf_blocks_list),
+            total_visible=len(num_leaf_blocks_per_unit),
+            num_blocks=self._stats_dict(num_leaf_blocks_per_unit),
         )
 
     def _videos_quality(self, course):
@@ -171,7 +175,7 @@ class CourseQualityView(DeveloperErrorViewMixin, GenericAPIView):
         )
 
     @request_cached
-    def _get_subsections_and_units(self, course):
+    def _get_subsections_and_units(self, course, request):
         """
         Returns {subsection_key: {unit_key: {num_leaf_blocks: <>, leaf_block_types: set(<>) }}}
         for all visible subsections and units.
@@ -180,15 +184,21 @@ class CourseQualityView(DeveloperErrorViewMixin, GenericAPIView):
         subsection_dict = {}
         for section in visible_sections:
             visible_subsections = self._get_visible_children(section)
+
+            if request.query_params.get('graded_only', False):
+                visible_subsections = filter(lambda s: s.graded, visible_subsections)
+
             for subsection in visible_subsections:
                 unit_dict = {}
                 visible_units = self._get_visible_children(subsection)
+
                 for unit in visible_units:
                     leaf_blocks = self._get_leaf_blocks(unit)
                     unit_dict[unit.location] = dict(
                         num_leaf_blocks=len(leaf_blocks),
                         leaf_block_types=set(block.location.block_type for block in leaf_blocks),
                     )
+
                 subsection_dict[subsection.location] = unit_dict
         return subsection_dict
 
