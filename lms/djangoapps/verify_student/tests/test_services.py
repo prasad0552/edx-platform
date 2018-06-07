@@ -16,7 +16,7 @@ from nose.tools import (
 )
 
 from common.test.utils import MockS3Mixin
-from lms.djangoapps.verify_student.models import SoftwareSecurePhotoVerification, SSOVerification
+from lms.djangoapps.verify_student.models import SoftwareSecurePhotoVerification, SSOVerification, ManualVerification
 from lms.djangoapps.verify_student.services import IDVerificationService
 from student.tests.factories import UserFactory
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
@@ -103,6 +103,11 @@ class TestIDVerificationService(MockS3Mixin, ModuleStoreTestCase):
         SSOVerification.objects.create(user=user, status='denied')
         status = IDVerificationService.user_status(user)
         self.assertEquals(status, {'status': 'must_reverify', 'error': '', 'should_display': False})
+
+        # test for when manual verification has been created
+        ManualVerification.objects.create(user=user, status='approved')
+        status = IDVerificationService.user_status(user)
+        self.assertEquals(status, {'status': 'approved', 'error': '', 'should_display': False})
 
     @ddt.unpack
     @ddt.data(
