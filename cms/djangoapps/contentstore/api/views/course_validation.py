@@ -37,31 +37,23 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
 
         The HTTP 200 response has the following values.
 
-        * is_self_paced
+        * is_self_paced - whether the course is self-paced.
         * dates
-            * has_start_date
-            * has_end_date
+            * has_start_date - whether the start date is set on the course.
+            * has_end_date - whether the end date is set on the course.
         * assignments
-            * total_number
-            * num_with_dates
-            * num_with_dates_after_start
-            * num_with_dates_before_end
+            * total_number - total number of assignments in the course.
+            * total_visible - number of assignments visible to learners in the course.
+            * num_with_dates - number of assignments with due dates.
+            * num_with_dates_after_start - number of assignments with due dates after the start date.
+            * num_with_dates_before_end - number of assignments with due dates before the end date.
         * grades
-            * sum_of_weights
+            * sum_of_weights - sum of weights for all assignments in the course (valid ones should equal 1).
         * certificates
-            * is_activated
-            * has_certificate
+            * is_activated - whether the certificate is activated for the course.
+            * has_certificate - whether the course has a certificate.
         * updates
-            * has_update
-
-    **Example GET Response**
-
-        {
-            dates: {
-                has_start_date: True,
-                has_end_date: True,
-            }
-        }
+            * has_update - whether at least one course update exists.
 
     """
     def get(self, request, course_id):
