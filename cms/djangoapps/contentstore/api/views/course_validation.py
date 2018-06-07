@@ -121,9 +121,7 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
         )
 
     def _assignments_validation(self, course):
-        assignments = self._get_assignments(course)
-        # TODO exclude sections with hide_from_toc
-        visible_assignments = filter(lambda a: not a.visible_to_staff_only, assignments)
+        assignments, visible_assignments = self._get_assignments(course)
         assignments_with_dates = filter(lambda a: a.due, visible_assignments)
         num_with_dates = len(assignments_with_dates)
         num_with_dates_after_start = (
@@ -165,7 +163,25 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
         )
 
     def _get_assignments(self, course):
-        return modulestore().get_items(course.id, qualifiers={'category': 'sequential'})
+        store = modulestore()
+        sections = [store.get_item(section_usage_key) for section_usage_key in course.children]
+        assignments = [
+            store.get_item(assignment_usage_key)
+            for section in sections
+            for assignment_usage_key in section.children
+        ]
+
+        visible_sections = filter(
+            lambda s: not s.visible_to_staff_only and not s.hide_from_toc,
+            sections,
+        )
+        assignments_in_visible_sections = [
+            store.get_item(assignment_usage_key)
+            for visible_section in visible_sections
+            for assignment_usage_key in visible_section.children
+        ]
+        visible_assignments = filter(lambda a: not a.visible_to_staff_only, assignments_in_visible_sections)
+        return assignments, visible_assignments
 
     def _has_start_date(self, course):
         return not course.start_date_is_still_default
