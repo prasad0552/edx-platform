@@ -10,6 +10,9 @@ from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin, view_auth_c
 from student.auth import has_course_author_access
 from xmodule.modulestore.django import modulestore
 
+from .utils import get_bool_param
+
+
 log = logging.getLogger(__name__)
 
 
@@ -60,7 +63,7 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
         """
         Returns validation information for the given course.
         """
-        default_request_value = request.query_params.get('all', False)
+        all_requested = get_bool_param(request, 'all', False)
 
         course_key = CourseKey.from_string(course_id)
         if not has_course_author_access(request.user, course_key):
@@ -72,36 +75,36 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
 
         store = modulestore()
         with store.bulk_operations(course_key):
-            course = store.get_course(course_key, depth=self._required_course_depth(request, default_request_value))
+            course = store.get_course(course_key, depth=self._required_course_depth(request, all_requested))
 
             response = dict(
                 is_self_paced=course.self_paced,
             )
-            if request.query_params.get('dates', default_request_value):
+            if get_bool_param(request, 'dates', all_requested):
                 response.update(
                     dates=self._dates_validation(course)
                 )
-            if request.query_params.get('assignments', default_request_value):
+            if get_bool_param(request, 'assignments', all_requested):
                 response.update(
                     assignments=self._assignments_validation(course)
                 )
-            if request.query_params.get('grades', default_request_value):
+            if get_bool_param(request, 'grades', all_requested):
                 response.update(
                     grades=self._grades_validation(course)
                 )
-            if request.query_params.get('certificates', default_request_value):
+            if get_bool_param(request, 'certificates', all_requested):
                 response.update(
                     certificates=self._certificates_validation(course)
                 )
-            if request.query_params.get('updates', default_request_value):
+            if get_bool_param(request, 'updates', all_requested):
                 response.update(
                     updates=self._updates_validation(course, request)
                 )
 
         return Response(response)
 
-    def _required_course_depth(self, request, default_request_value):
-        if request.query_params.get('assignments', default_request_value):
+    def _required_course_depth(self, request, all_requested):
+        if get_bool_param(request, 'assignments', all_requested):
             return 2
         else:
             return 0

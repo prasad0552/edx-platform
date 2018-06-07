@@ -13,6 +13,8 @@ from openedx.core.lib.graph_traversals import traverse_pre_order
 from student.auth import has_course_author_access
 from xmodule.modulestore.django import modulestore
 
+from .utils import get_bool_param
+
 log = logging.getLogger(__name__)
 
 
@@ -34,7 +36,7 @@ class CourseQualityView(DeveloperErrorViewMixin, GenericAPIView):
         * subsections
         * units
         * videos
-        * graded_only (boolean) - whether to return subsections and units information for only graded subsections.
+        * exclude_graded (boolean) - whether to exclude graded subsections in the subsections and units information.
 
     **GET Response Values**
 
@@ -79,7 +81,7 @@ class CourseQualityView(DeveloperErrorViewMixin, GenericAPIView):
         """
         Returns validation information for the given course.
         """
-        default_request_value = request.query_params.get('all', False)
+        all_requested = get_bool_param(request, 'all', False)
 
         course_key = CourseKey.from_string(course_id)
         if not has_course_author_access(request.user, course_key):
@@ -90,36 +92,36 @@ class CourseQualityView(DeveloperErrorViewMixin, GenericAPIView):
             )
         store = modulestore()
         with store.bulk_operations(course_key):
-            course = store.get_course(course_key, depth=self._required_course_depth(request, default_request_value))
+            course = store.get_course(course_key, depth=self._required_course_depth(request, all_requested))
 
             response = dict(
                 is_self_paced=course.self_paced,
             )
-            if request.query_params.get('sections', default_request_value):
+            if get_bool_param(request, 'sections', all_requested):
                 response.update(
                     sections=self._sections_quality(course)
                 )
-            if request.query_params.get('subsections', default_request_value):
+            if get_bool_param(request, 'subsections', all_requested):
                 response.update(
                     subsections=self._subsections_quality(course, request)
                 )
-            if request.query_params.get('units', default_request_value):
+            if get_bool_param(request, 'units', all_requested):
                 response.update(
                     units=self._units_quality(course, request)
                 )
-            if request.query_params.get('videos', default_request_value):
+            if get_bool_param(request, 'videos', all_requested):
                 response.update(
                     videos=self._videos_quality(course)
                 )
 
         return Response(response)
 
-    def _required_course_depth(self, request, default_request_value):
-        if request.query_params.get('units', default_request_value):
+    def _required_course_depth(self, request, all_requested):
+        if get_bool_param(request, 'units', all_requested):
             return None
-        if request.query_params.get('subsections', default_request_value):
+        elif get_bool_param(request, 'subsections', all_requested):
             return None
-        elif request.query_params.get('sections', default_request_value):
+        elif get_bool_param(request, 'sections', all_requested):
             return 1
         else:
             return 0
@@ -185,8 +187,8 @@ class CourseQualityView(DeveloperErrorViewMixin, GenericAPIView):
         for section in visible_sections:
             visible_subsections = self._get_visible_children(section)
 
-            if request.query_params.get('graded_only', False):
-                visible_subsections = filter(lambda s: s.graded, visible_subsections)
+            if get_bool_param(request, 'exclude_graded', False):
+                visible_subsections = filter(lambda s: not s.graded, visible_subsections)
 
             for subsection in visible_subsections:
                 unit_dict = {}
