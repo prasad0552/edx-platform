@@ -32,7 +32,7 @@ def i_select_advanced_settings(step):
     world.visit(link)
 
 
-@step('I am on the Advanced Course Settings page in Studio$')
+@step('I am on Advanced Course Settings page in Studio$')
 def i_am_on_advanced_course_settings(step):
     step.given('I have opened a new course in Studio')
     step.given('I select the Advanced Settings')
