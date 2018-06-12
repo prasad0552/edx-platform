@@ -24,6 +24,9 @@ from contentstore.storage import course_import_export_storage
 from contentstore.tasks import CourseImportTask, import_olx
 from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin, view_auth_classes
 
+from .utils import course_author_access_required
+
+
 log = logging.getLogger(__name__)
 
 
@@ -108,22 +111,15 @@ class CourseImportView(CourseImportExportViewMixin, GenericAPIView):
     # does not specify a serializer class.
     exclude_from_schema = True
 
-    def post(self, request, course_id):
+    @course_author_access_required
+    def post(self, request, course_key):
         """
         Kicks off an asynchronous course import and returns an ID to be used to check
         the task's status
         """
-
-        courselike_key = CourseKey.from_string(course_id)
-        if not has_course_author_access(request.user, courselike_key):
-            return self.make_error_response(
-                status_code=status.HTTP_403_FORBIDDEN,
-                developer_message='The user requested does not have the required permissions.',
-                error_code='user_mismatch'
-            )
         try:
             if 'course_data' not in request.FILES:
-                return self.make_error_response(
+                raise self.api_error(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     developer_message='Missing required parameter',
                     error_code='internal_error',
@@ -131,12 +127,12 @@ class CourseImportView(CourseImportExportViewMixin, GenericAPIView):
 
             filename = request.FILES['course_data'].name
             if not filename.endswith('.tar.gz'):
-                return self.make_error_response(
+                raise self.api_error(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     developer_message='Parameter in the wrong format',
                     error_code='internal_error',
                 )
-            course_dir = path(settings.GITHUB_REPO_ROOT) / base64.urlsafe_b64encode(repr(courselike_key))
+            course_dir = path(settings.GITHUB_REPO_ROOT) / base64.urlsafe_b64encode(repr(course_key))
             temp_filepath = course_dir / filename
             if not course_dir.isdir():
                 os.mkdir(course_dir)
@@ -146,46 +142,41 @@ class CourseImportView(CourseImportExportViewMixin, GenericAPIView):
                 for chunk in request.FILES['course_data'].chunks():
                     temp_file.write(chunk)
 
-            log.info("Course import %s: Upload complete", courselike_key)
+            log.info("Course import %s: Upload complete", course_key)
             with open(temp_filepath, 'rb') as local_file:
                 django_file = File(local_file)
                 storage_path = course_import_export_storage.save(u'olx_import/' + filename, django_file)
 
             async_result = import_olx.delay(
-                request.user.id, text_type(courselike_key), storage_path, filename, request.LANGUAGE_CODE)
+                request.user.id, text_type(course_key), storage_path, filename, request.LANGUAGE_CODE)
             return Response({
                 'task_id': async_result.task_id
             })
         except Exception as e:  # pylint: disable=broad-except
-            return self.make_error_response(
+            log.exception(str(e))
+            raise self.api_error(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 developer_message=str(e),
                 error_code='internal_error'
             )
 
-    def get(self, request, course_id):
+    @course_author_access_required
+    def get(self, request, course_key):
         """
         Check the status of the specified task
         """
-
-        courselike_key = CourseKey.from_string(course_id)
-        if not has_course_author_access(request.user, courselike_key):
-            return self.make_error_response(
-                status_code=status.HTTP_403_FORBIDDEN,
-                developer_message='The user requested does not have the required permissions.',
-                error_code='user_mismatch'
-            )
         try:
             task_id = request.GET['task_id']
             filename = request.GET['filename']
-            args = {u'course_key_string': course_id, u'archive_name': filename}
+            args = {u'course_key_string': str(course_key), u'archive_name': filename}
             name = CourseImportTask.generate_name(args)
             task_status = UserTaskStatus.objects.filter(name=name, task_id=task_id).first()
             return Response({
                 'state': task_status.state
             })
         except Exception as e:  # pylint: disable=broad-except
-            return self.make_error_response(
+            log.exception(str(e))
+            raise self.api_error(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 developer_message=str(e),
                 error_code='internal_error'

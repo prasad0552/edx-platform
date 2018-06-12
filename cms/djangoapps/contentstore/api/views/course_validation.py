@@ -1,17 +1,14 @@
 # pylint: disable=missing-docstring
 import logging
-from rest_framework import status
 from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
 
 from contentstore.course_info_model import get_course_updates
 from contentstore.views.certificates import CertificateManager
-from opaque_keys.edx.keys import CourseKey
 from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin, view_auth_classes
-from student.auth import has_course_author_access
 from xmodule.modulestore.django import modulestore
 
-from .utils import get_bool_param
+from .utils import get_bool_param, course_author_access_required
 
 
 log = logging.getLogger(__name__)
@@ -60,19 +57,12 @@ class CourseValidationView(DeveloperErrorViewMixin, GenericAPIView):
             * has_update - whether at least one course update exists.
 
     """
-    def get(self, request, course_id):
+    @course_author_access_required
+    def get(self, request, course_key):
         """
         Returns validation information for the given course.
         """
         all_requested = get_bool_param(request, 'all', False)
-
-        course_key = CourseKey.from_string(course_id)
-        if not has_course_author_access(request.user, course_key):
-            return self.make_error_response(
-                status_code=status.HTTP_403_FORBIDDEN,
-                developer_message='The user requested does not have the required permissions.',
-                error_code='user_mismatch'
-            )
 
         store = modulestore()
         with store.bulk_operations(course_key):
