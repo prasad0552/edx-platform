@@ -1,8 +1,10 @@
 """
 Tests for Course API views.
 """
+import ddt
 from hashlib import md5
 
+from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse
 from django.test import RequestFactory
 from django.test.utils import override_settings
@@ -13,7 +15,7 @@ from search.tests.utils import SearcherMixin
 
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase, SharedModuleStoreTestCase
 
-from ..views import CourseDetailView
+from ..views import CourseDetailView, CourseListUserThrottle
 from .mixins import TEST_PASSWORD, CourseApiFactoryMixin
 
 
@@ -53,6 +55,7 @@ class CourseApiTestViewMixin(CourseApiFactoryMixin):
 
 
 @attr(shard=9)
+@ddt.ddt
 class CourseListViewTestCase(CourseApiTestViewMixin, SharedModuleStoreTestCase):
     """
     Test responses returned from CourseListView.
@@ -99,6 +102,16 @@ class CourseListViewTestCase(CourseApiTestViewMixin, SharedModuleStoreTestCase):
     def test_not_logged_in(self):
         self.client.logout()
         self.verify_response()
+
+    @ddt.data('staff', 'user')
+    def test_throttle_is_set_correctly(self, user_scope):
+        """ Make sure throttle rate is set correctly for different user scopes. """
+        throttle = CourseListUserThrottle()
+        throttle.scope = user_scope
+        try:
+            throttle.parse_rate(throttle.get_rate())
+        except ImproperlyConfigured:
+            self.fail("No throttle rate set for {}".format(user_scope))
 
 
 @attr(shard=9)
