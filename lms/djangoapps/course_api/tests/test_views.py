@@ -14,7 +14,9 @@ from search.tests.tests import TEST_INDEX_NAME
 from search.tests.utils import SearcherMixin
 
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase, SharedModuleStoreTestCase
+from waffle.testutils import override_switch
 
+from .. import USE_RATE_LIMIT_2_FOR_COURSE_LIST_API, USE_RATE_LIMIT_20_FOR_COURSE_LIST_API
 from ..views import CourseDetailView, CourseListUserThrottle
 from .mixins import TEST_PASSWORD, CourseApiFactoryMixin
 
@@ -103,15 +105,37 @@ class CourseListViewTestCase(CourseApiTestViewMixin, SharedModuleStoreTestCase):
         self.client.logout()
         self.verify_response()
 
-    @ddt.data('staff', 'user')
-    def test_throttle_is_set_correctly(self, user_scope):
-        """ Make sure throttle rate is set correctly for different user scopes. """
+    def assert_throttle_configured_correctly(self, user_scope, throws_exception, expected_rate):
+        """Helper to determine throttle configuration is correctly set."""
         throttle = CourseListUserThrottle()
+        throttle.check_for_switches()
         throttle.scope = user_scope
         try:
-            throttle.parse_rate(throttle.get_rate())
+            rate_limit, __ = throttle.parse_rate(throttle.get_rate())
+            self.assertEqual(rate_limit, expected_rate)
+            self.assertFalse(throws_exception)
         except ImproperlyConfigured:
-            self.fail("No throttle rate set for {}".format(user_scope))
+            self.assertTrue(throws_exception)
+
+    @ddt.data(('staff', False, 20), ('user', False, 10), ('unknown', True, None))
+    @ddt.unpack
+    def test_throttle_rate_default(self, user_scope, throws_exception, expected_rate):
+        """ Make sure throttle rate default is set correctly for different user scopes. """
+        self.assert_throttle_configured_correctly(user_scope, throws_exception, expected_rate)
+
+    @ddt.data(('staff', False, 10), ('user', False, 2), ('unknown', True, None))
+    @ddt.unpack
+    @override_switch('course_list_api_rate_limit.rate_limit_2', active=True)
+    def test_throttle_rate_2(self, user_scope, throws_exception, expected_rate):
+        """ Make sure throttle rate 2 is set correctly for different user scopes. """
+        self.assert_throttle_configured_correctly(user_scope, throws_exception, expected_rate)
+
+    @ddt.data(('staff', False, 40), ('user', False, 20), ('unknown', True, None))
+    @ddt.unpack
+    @override_switch('course_list_api_rate_limit.rate_limit_20', active=True)
+    def test_throttle_rate_20(self, user_scope, throws_exception, expected_rate):
+        """ Make sure throttle rate 20 is set correctly for different user scopes. """
+        self.assert_throttle_configured_correctly(user_scope, throws_exception, expected_rate)
 
 
 @attr(shard=9)

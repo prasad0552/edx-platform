@@ -11,7 +11,7 @@ from rest_framework.throttling import UserRateThrottle
 from edx_rest_framework_extensions.paginators import NamespacedPageNumberPagination
 from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin, view_auth_classes
 
-from . import USE_RATE_LIMIT_10_FOR_COURSE_LIST_API, USE_RATE_LIMIT_20_FOR_COURSE_LIST_API
+from . import USE_RATE_LIMIT_2_FOR_COURSE_LIST_API, USE_RATE_LIMIT_20_FOR_COURSE_LIST_API
 from .api import course_detail, list_courses
 from .forms import CourseDetailGetForm, CourseListGetForm
 from .serializers import CourseDetailSerializer, CourseSerializer
@@ -132,15 +132,15 @@ class CourseListUserThrottle(UserRateThrottle):
     # limited until optimized. LEARNER-5527
 
     THROTTLE_RATES = {
-        'user': '2/minute',
-        'staff': '10/minute',
+        'user': '10/minute',
+        'staff': '20/minute',
     }
 
-    def allow_request(self, request, view):
-        if USE_RATE_LIMIT_10_FOR_COURSE_LIST_API.is_enabled():
+    def check_for_switches(self):
+        if USE_RATE_LIMIT_2_FOR_COURSE_LIST_API.is_enabled():
             self.THROTTLE_RATES = {
-                'user': '10/minute',
-                'staff': '20/minute',
+                'user': '2/minute',
+                'staff': '10/minute',
             }
         elif USE_RATE_LIMIT_20_FOR_COURSE_LIST_API.is_enabled():
             self.THROTTLE_RATES = {
@@ -148,6 +148,8 @@ class CourseListUserThrottle(UserRateThrottle):
                 'staff': '40/minute',
             }
 
+    def allow_request(self, request, view):
+        self.check_for_switches()
         # Use a special scope for staff to allow for a separate throttle rate
         user = request.user
         if user.is_authenticated and (user.is_staff or user.is_superuser):
